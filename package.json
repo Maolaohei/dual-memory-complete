@@ -1,0 +1,43 @@
+{
+  "name": "dual-memory-complete",
+  "version": "4.0.0",
+  "description": "Complete AI Agent Memory System - Vector storage + Advanced management",
+  "main": "cli.js",
+  "scripts": {
+    "start": "node cli.js",
+    "status": "node cli.js status",
+    "search": "node cli.js search",
+    "add": "node cli.js add",
+    "compress": "node v4-enhanced/commands/compress.js",
+    "visualize": "node v4-enhanced/commands/visualize.js",
+    "test": "node tests/run-tests.js",
+    "archive": "node scripts/auto-archive.js",
+    "archive:dry": "node scripts/auto-archive.js --dry-run"
+  },
+  "dependencies": {
+    "@xenova/transformers": "^2.14.0",
+    "vectordb": "^0.9.0",
+    "axios": "^1.6.0",
+    "playwright": "^1.41.0"
+  },
+  "devDependencies": {},
+  "keywords": [
+    "ai",
+    "agent",
+    "memory",
+    "vector-database",
+    "lancedb",
+    "embeddings",
+    "openclaw"
+  ],
+  "author": "Shinobu Oshino",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Maolaohei/dual-memory-complete.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Maolaohei/dual-memory-complete/issues"
+  },
+  "homepage": "https://github.com/Maolaohei/dual-memory-complete#readme"
+}
