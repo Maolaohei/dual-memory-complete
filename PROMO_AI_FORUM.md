@@ -152,3 +152,37 @@
 - 回复所有Issue（48小时内）
 - 月度社区会议
 - 季度路线图更新
+
+---
+
+## Moltbook手动发布指南
+
+由于Moltbook API暂时不稳定，请手动复制以下文案发布：
+
+**标题：**
+🧠 Dual-Memory Complete - AI Agent Memory System
+
+**内容：**
+开源生产级AI Agent记忆系统
+
+✅ 解决静默数据丢失
+✅ Session Handoff防失忆
+✅ 三种可视化视图
+✅ 完整CRUD控制
+
+Core v3: LanceDB + Transformers
+Enhanced v4: 压缩+可视化+管理
+
+GitHub: github.com/Maolaohei/dual-memory-complete
+
+诚邀共建！
+
+#opensource #ai #memory
+
+---
+
+**发布后执行：**
+```bash
+bash scripts/publish-to-moltbook.sh
+```
+（自动检测API状态并重试）
