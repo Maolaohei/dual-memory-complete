@@ -14,6 +14,11 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                    Dual-Memory Complete                      │
 ├─────────────────────────────────────────────────────────────┤
+│  Layer 4: Integration 🆕                                    │
+│  ├── Memory Hook (自动检索/存储)                             │
+│  ├── Context Compression (上下文压缩)                        │
+│  └── OpenClaw Bridge (无缝集成)                             │
+├─────────────────────────────────────────────────────────────┤
 │  Layer 3: Management (v4)                                   │
 │  ├── Smart Compression (compress.js)                        │
 │  ├── Visualization (timeline, stats, network)               │
@@ -50,6 +55,12 @@
 - ✅ **可视化** - 时间轴/统计/网络图
 - ✅ **主动干预** - 完整 CRUD 控制
 - ✅ **访问追踪** - 记忆使用统计
+
+### Integration Layer (集成层 🆕)
+- ✅ **Memory Hook** - 自动检索长期记忆，压缩短期上下文
+- ✅ **Auto-Store** - 对话结束后自动提取关键信息存储
+- ✅ **OpenClaw Bridge** - 一行代码集成到 OpenClaw
+- ✅ **Context Fusion** - 长期记忆 + 短期上下文无缝融合
 
 ---
 
@@ -102,6 +113,32 @@ node cli.js search "甜甜圈"
 # 时间线查看
 node cli.js timeline
 ```
+
+### Memory Hook 集成 (🆕 推荐)
+
+一行代码集成到 OpenClaw：
+
+```javascript
+const { withMemory } = require('./src/memory-hook-simple');
+
+const response = await withMemory(userMessage, async (messages) => {
+  // 原有的 OpenClaw 生成逻辑
+  return await openclaw.generate(messages);
+});
+```
+
+或使用启动脚本：
+
+```bash
+# 启动带记忆增强的 OpenClaw
+~/.openclaw/bin/start-with-memory.sh
+```
+
+功能：
+- 🔄 自动检索相关历史记忆
+- 📦 智能压缩近期对话上下文  
+- 💾 自动存储高价值信息
+- 🔗 跨会话记忆关联
 
 ### 高级管理 (v4 Enhanced)
 
@@ -169,7 +206,9 @@ MIT License - 详见 [LICENSE](./LICENSE)
 ## 📝 更新日志
 
 ### 2026-02-24
+- ✅ **Memory Hook 集成** - 自动检索 + 上下文压缩 + 自动存储
 - ✅ 嵌入模型升级为 `all-mpnet-base-v2` (768维)
 - ✅ 支持多模型配置切换 (minilm/mpnet/qwen3)
 - ✅ 性能提升 10% (MTEB 56.8 → 62.3)
 - ✅ 新增 Jina AI 内容抓取指南
+- ✅ OpenClaw 集成方案 - `start-with-memory.sh` 一键启动
