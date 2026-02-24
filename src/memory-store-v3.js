@@ -53,6 +53,13 @@ class MemoryStoreV3 extends MemoryStore {
    */
   async initialize() {
     await super.initialize();
+    
+    // 基类把 this.extractor 设成了 embedding pipeline
+    // 我们把它保存为 this.embedder，让基类 _embed() 能正常工作
+    this.embedder = this._embeddingPipeline || this.extractor;
+    // 恢复 SmartExtractor
+    this.extractor = new SmartExtractor();
+    
     await this.timeline.initialize();  // 初始化时间线
     await this.archive.initialize();   // 初始化归档
     await this._ensureTimelineExists();
@@ -184,7 +191,7 @@ class MemoryStoreV3 extends MemoryStore {
       merge_count: 0,
       // v3 扩展字段
       forgotten: false,
-      forgotten_at: null,
+      forgotten_at: '',
       forgotten_reason: '',
       user_confirmed: metadata.user_confirmed || false,
       confirmed_at: metadata.confirmed_at || '',

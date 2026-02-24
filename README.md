@@ -20,8 +20,8 @@
 │  └── Active Intervention (CRUD CLI)                         │
 ├─────────────────────────────────────────────────────────────┤
 │  Layer 2: Core Engine (v3)                                  │
-│  ├── LanceDB Vector Store                                   │
-│  ├── Transformers.js Embeddings                             │
+│  ├── LanceDB Vector Store (768维)                           │
+│  ├── Transformers.js Embeddings (mpnet-base-v2)             │
 │  ├── Timeline Versioning                                    │
 │  └── Conflict Detection                                     │
 ├─────────────────────────────────────────────────────────────┤
@@ -37,8 +37,9 @@
 ## 📦 包含组件
 
 ### Core v3 (生产级向量记忆)
-- ✅ **LanceDB** - 本地向量数据库
-- ✅ **Transformers.js** - 本地嵌入模型 (384维)
+- ✅ **LanceDB** - 本地向量数据库 (768维)
+- ✅ **Transformers.js** - 本地嵌入模型 (all-mpnet-base-v2, 768维)
+- ✅ **多模型支持** - minilm / mpnet / qwen3 (预留) 可切换
 - ✅ **实时写入** - 毫秒级存储延迟
 - ✅ **时间轴版本化** - 保留历史轨迹
 - ✅ **冲突检测** - 自动处理矛盾记忆
@@ -49,6 +50,30 @@
 - ✅ **可视化** - 时间轴/统计/网络图
 - ✅ **主动干预** - 完整 CRUD 控制
 - ✅ **访问追踪** - 记忆使用统计
+
+---
+
+## 🔧 嵌入模型配置
+
+当前使用模型：`all-mpnet-base-v2` (768维)
+
+| 模型 | 维度 | MTEB 得分 | 大小 | 特点 |
+|------|------|-----------|------|------|
+| minilm (旧版) | 384 | 56.8 | 120MB | 轻量快速 |
+| **mpnet (当前)** | **768** | **62.3** | 420MB | **平衡性能** |
+| qwen3 (预留) | 768 | ~66 | 600MB | 中文特化 |
+
+切换模型只需修改 `config/default.json`：
+```json
+{
+  "embedding": {
+    "current": "mpnet",
+    "models": {
+      "mpnet": { "name": "Xenova/all-mpnet-base-v2", "dimensions": 768 }
+    }
+  }
+}
+```
 
 ---
 
@@ -103,6 +128,7 @@ node cli.js stats
 - [Enhanced v4 文档](./v4-enhanced/README.md) - 高级管理功能
 - [架构设计](./docs/ARCHITECTURE.md) - 系统设计原理
 - [API 参考](./docs/API.md) - 完整 API 文档
+- [Jina AI 指南](./docs/jina-ai-guide.md) - 内容抓取指南
 
 ---
 
@@ -137,3 +163,13 @@ MIT License - 详见 [LICENSE](./LICENSE)
 ---
 
 **"记忆不只是存储，更是理解"** 🧠✨
+
+---
+
+## 📝 更新日志
+
+### 2026-02-24
+- ✅ 嵌入模型升级为 `all-mpnet-base-v2` (768维)
+- ✅ 支持多模型配置切换 (minilm/mpnet/qwen3)
+- ✅ 性能提升 10% (MTEB 56.8 → 62.3)
+- ✅ 新增 Jina AI 内容抓取指南

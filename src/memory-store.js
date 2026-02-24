@@ -8,6 +8,25 @@ const lancedb = require('vectordb');
 const path = require('path');
 const fs = require('fs');
 
+// 加载配置
+function loadConfig() {
+  try {
+    const configPath = path.join(__dirname, '../config/default.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    return config;
+  } catch (e) {
+    console.warn('⚠️  无法加载配置，使用默认值');
+    return {
+      embedding: {
+        current: 'mpnet',
+        models: {
+          mpnet: { name: 'Xenova/all-mpnet-base-v2', dimensions: 768 }
+        }
+      }
+    };
+  }
+}
+
 class MemoryStore {
   /**
    * 初始化记忆存储
@@ -16,8 +35,21 @@ class MemoryStore {
    * @param {string} options.tableName - 表名
    */
   constructor(options = {}) {
-    this.dbPath = options.dbPath || './lancedb';
-    this.tableName = options.tableName || 'memories';
+    this.config = loadConfig();
+    this.dbPath = options.dbPath || this.config.paths?.dbPath || './lancedb';
+    this.tableName = options.tableName || this.config.paths?.tableName || 'memories';
+    
+    // 获取当前模型配置
+    const currentModelKey = this.config.embedding?.current || 'mpnet';
+    this.modelConfig = this.config.embedding?.models?.[currentModelKey] || 
+                       this.config.embedding?.models?.mpnet ||
+                       { name: 'Xenova/all-mpnet-base-v2', dimensions: 768 };
+    
+    this.dimensions = this.modelConfig.dimensions || 768;
+    this.modelName = this.modelConfig.name || 'Xenova/all-mpnet-base-v2';
+    
+    console.log(`📊 使用模型: ${currentModelKey} (${this.modelName}, ${this.dimensions}维)`);
+    
     this.db = null;
     this.table = null;
     this.extractor = null;
@@ -31,9 +63,9 @@ class MemoryStore {
     if (this._initialized) return;
 
     // 1. 加载嵌入模型
-    console.log('🧠 加载 embedding 模型...');
-    this.extractor = await pipeline('feature-extraction',
-      'Xenova/paraphrase-multilingual-MiniLM-L12-v2');
+    console.log(`🧠 加载 embedding 模型: ${this.modelName} (${this.dimensions}维)...`);
+    this._embeddingPipeline = await pipeline('feature-extraction', this.modelName);
+    this.extractor = this._embeddingPipeline;
     console.log('✅ 模型加载完成');
 
     // 2. 连接 LanceDB
@@ -45,17 +77,36 @@ class MemoryStore {
       console.log(`📁 已打开表: ${this.tableName}`);
     } catch (e) {
       // 表不存在，创建空表 (提供完整示例以推断 schema)
+      // 注意: Arrow 需要非 null 值来推断类型，所以用空字符串代替 null
+      const now = new Date().toISOString();
       const emptyData = [{
         id: 'initial_marker',
         content: 'system_marker',
-        vector: Array(384).fill(0),
+        vector: Array(this.dimensions).fill(0),
         type: 'system',
         topic: 'system',
         character: 'system',
         priority: 'P3',
+        confidence: 1.0,
+        date: now.slice(0, 10),
+        created_at: now,
+        updated_at: now,
+        quality_score: 1.0,
+        context: '',
+        version: 1,
         query_count: 0,
-        last_accessed: new Date().toISOString(),
-        created_at: new Date().toISOString()
+        last_queried: '',
+        related_to: '',
+        similarity: 0,
+        merge_count: 0,
+        forgotten: false,
+        forgotten_at: '',
+        forgotten_reason: '',
+        user_confirmed: false,
+        confirmed_at: '',
+        conflict_resolved: false,
+        conflict_resolution: '',
+        sources: ['']
       }];
       this.table = await this.db.createTable(this.tableName, emptyData);
       console.log(`📁 已创建新表并初始化 Schema: ${this.tableName}`);
@@ -67,14 +118,22 @@ class MemoryStore {
   /**
    * 生成文本嵌入
    * @param {string} text - 输入文本
-   * @returns {number[]} - 384维向量
+   * @returns {number[]} - 向量 (维度由配置决定，默认768)
    */
   async _embed(text) {
-    if (!this.extractor) {
+    // 优先使用 this.embedder (被子类设置)，否则使用 this.extractor
+    let embedder = this.embedder || this.extractor;
+    
+    // 如果 embedder 不是函数，可能是 SmartExtractor，需要回退
+    if (embedder && typeof embedder !== 'function' && this._embeddingPipeline) {
+      embedder = this._embeddingPipeline;
+    }
+    
+    if (!embedder || typeof embedder !== 'function') {
       throw new Error('MemoryStore not initialized. Call initialize() first.');
     }
 
-    const output = await this.extractor(text, {
+    const output = await embedder(text, {
       pooling: 'mean',
       normalize: true
     });

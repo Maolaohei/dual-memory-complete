@@ -397,13 +397,13 @@ async function main() {
   
   try {
     await commands[command](cmdArgs);
+    // 给 LanceDB 一些时间完成后台操作
+    await new Promise(resolve => setTimeout(resolve, 100));
   } catch (err) {
     print('r', `\n❌ 错误: ${err.message}`);
     console.error(err);
     process.exit(1);
   }
-  
-  process.exit(0);
 }
 
 main();
