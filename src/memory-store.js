@@ -502,7 +502,7 @@ class MemoryStore {
     // 计算质量分数
     const qualityScore = this._calculateQuality(content, metadata);
 
-    // 准备数据
+    // 准备数据 - 必须包含所有 schema 字段
     const data = {
       id,
       content,
@@ -511,18 +511,33 @@ class MemoryStore {
       topic: metadata.topic || '',
       character: metadata.character || '',
       priority: metadata.priority || '',
+      confidence: metadata.confidence || 1.0,
       date: metadata.date || new Date().toISOString().slice(0, 10),
       created_at: metadata.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
       // 质量分数
       quality_score: qualityScore,
+      context: metadata.context || '',
+      version: metadata.version || 1,
       // 使用统计
       query_count: 0,
       last_queried: '',
       // 去重相关字段
       related_to: metadata.related_to || '',
       similarity: metadata.similarity || 0,
-      merge_count: 0
+      merge_count: 0,
+      // 遗忘机制字段
+      forgotten: false,
+      forgotten_at: '',
+      forgotten_reason: '',
+      // 用户确认字段
+      user_confirmed: false,
+      confirmed_at: '',
+      // 冲突解决字段
+      conflict_resolved: false,
+      conflict_resolution: '',
+      // 来源字段
+      sources: metadata.sources || ['']
     };
 
     // 添加到表

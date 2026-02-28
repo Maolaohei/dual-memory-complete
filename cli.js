@@ -20,7 +20,7 @@ let store = null;
 async function getStore() {
   if (!store) {
     store = new MemoryStoreV3({
-      dbPath: './lancedb',
+      dbPath: './data/vectordb',
       tableName: 'memories',
       timelinePath: './timeline.jsonl'
     });
@@ -97,7 +97,7 @@ async function cmdStatus() {
   const stats = await s.getStats();
   
   const fs = require('fs');
-  const lancedbExists = fs.existsSync('./lancedb');
+  const lancedbExists = fs.existsSync('./data/vectordb');
   const timelineExists = fs.existsSync('./timeline.jsonl');
   
   print('b', '\n🧠 Dual-Memory 统一系统状态 (v2+v3)\n');

@@ -1,34 +1,16 @@
-# Dependencies
+# Vector database
+data/
+
+# Node modules
 node_modules/
-package-lock.json
-yarn.lock
-
-# Session files (contain sensitive cookies)
-sessions/
-*.session.json
-
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
 
 # Logs
 *.log
-logs/
+
+# OS files
+.DS_Store
+Thumbs.db
 
 # Environment
 .env
 .env.local
-
-# Test coverage
-coverage/
-.nyc_output/
-
-# Build outputs
-dist/
-build/
