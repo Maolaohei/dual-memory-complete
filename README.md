@@ -114,6 +114,27 @@ node cli.js search "甜甜圈"
 node cli.js timeline
 ```
 
+### 从 MD 文件迁移 🆕
+
+如果你有现有的 Markdown 记忆文件，可以使用迁移工具批量导入：
+
+```bash
+# 迁移单个目录
+node migrate-v4.js topics
+node migrate-v4.js archive
+node migrate-v4.js issues
+node migrate-v4.js daily
+
+# 或使用批量脚本
+./batch-import.sh
+```
+
+迁移工具会：
+- 🔄 自动生成 768 维向量嵌入
+- 📁 保留原始文件结构和元数据
+- 🏷️ 自动提取标签和优先级
+- ✅ 去重检测，避免重复导入
+
 ### Memory Hook 集成 (🆕 推荐)
 
 一行代码集成到 OpenClaw：
@@ -204,6 +225,12 @@ MIT License - 详见 [LICENSE](./LICENSE)
 ---
 
 ## 📝 更新日志
+
+### 2026-02-28
+- ✅ **迁移工具** - `migrate-v4.js` 批量迁移 MD 文件到向量库
+- ✅ **Schema 修复** - 修复 memory-store.js 字段缺失问题 (新增 10 个字段)
+- ✅ **批量导入脚本** - `batch-import.sh` 一键迁移所有目录
+- ✅ CLI 增强 - 更好的错误处理和状态显示
 
 ### 2026-02-24
 - ✅ **Memory Hook 集成** - 自动检索 + 上下文压缩 + 自动存储
