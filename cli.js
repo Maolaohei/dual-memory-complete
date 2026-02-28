@@ -176,7 +176,7 @@ async function cmdStore(args) {
 async function cmdRetrieve(args) {
   if (args.length < 1) {
     print('r', '❌ 错误: 请提供查询内容');
-    console.log('用法: node cli.js retrieve "查询" [-n 数量] [--history] [--no-decay]');
+    console.log('用法: node cli.js retrieve "查询" [-n 数量] [--history] [--no-decay] [--no-hyde]');
     process.exit(1);
   }
   
@@ -184,17 +184,20 @@ async function cmdRetrieve(args) {
   let limit = 5;
   let includeHistory = false;
   let decayAware = true;
+  let useHyDE = true;
   
   for (let i = 1; i < args.length; i++) {
     if (args[i] === '-n' && args[i+1]) limit = parseInt(args[++i], 10);
     else if (args[i] === '--history') includeHistory = true;
     else if (args[i] === '--no-decay') decayAware = false;
+    else if (args[i] === '--no-hyde') useHyDE = false;
   }
   
   const s = await getStore();
-  const result = await s.smartRetrieve(query, { limit, includeHistory, decayAware });
+  const result = await s.smartRetrieve(query, { limit, includeHistory, decayAware, useHyDE });
   
   print('b', `\n🔍 智能检索 "${query}" (${result.latency}ms)`);
+  if (result.hyde_used) print('m', `   HyDE: 已启用`);
   print('c', `找到 ${result.count} 条有效记忆:\n`);
   
   result.results.forEach((r, i) => {

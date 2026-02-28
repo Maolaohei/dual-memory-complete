@@ -263,7 +263,7 @@ class MemoryStoreV3 extends MemoryStore {
   }
 
   /**
-   * 智能检索 - 合并 v2 的 search + v3 的 retrieve + 缓存
+   * 智能检索 - 合并 v2 的 search + v3 的 retrieve + 缓存 + HyDE
    */
   async smartRetrieve(query, options = {}) {
     const startTime = Date.now();
@@ -273,7 +273,8 @@ class MemoryStoreV3 extends MemoryStore {
       minConfidence = 0.5,
       decayAware = true,
       includeHistory = false,
-      useCache = true
+      useCache = true,
+      useHyDE = true  // v4.0 新增
     } = options;
 
     // 1. 缓存检查 (v3 优化)
@@ -285,22 +286,32 @@ class MemoryStoreV3 extends MemoryStore {
       }
     }
 
-    // 2. v2 的过滤搜索
-    let results = await this.searchWithFilter(query, filters, limit * 2);
+    // 2. HyDE 检索优化 (v4.0 新增)
+    let searchQuery = query;
+    if (useHyDE) {
+      const hypothetical = await this._generateHypotheticalMemory(query);
+      if (hypothetical) {
+        searchQuery = hypothetical;
+        console.log(`🔍 HyDE: "${query}" → "${hypothetical.slice(0, 50)}..."`);
+      }
+    }
+
+    // 3. v2 的过滤搜索
+    let results = await this.searchWithFilter(searchQuery, filters, limit * 2);
     
-    // 3. 过滤已遗忘的记忆 (v3)
+    // 4. 过滤已遗忘的记忆 (v3)
     results = results.filter(r => !r.metadata.forgotten);
     
-    // 4. v3 的动态衰减处理
+    // 5. v4.0 的动态衰减处理 (优化版)
     if (decayAware) {
       results = results.map(r => ({
         ...r,
-        effective_confidence: this._applyDecay(r),
+        effective_confidence: this._calculateFinalScore(r),
         original_confidence: r.metadata.confidence || r.metadata.quality_score
       })).filter(r => r.effective_confidence >= minConfidence);
     }
 
-    // 5. 时间轴版本化检索 (v3)
+    // 6. 时间轴版本化检索 (v3)
     if (includeHistory) {
       const historyPromises = results.map(r => this._getHistory(r.id));
       const histories = await Promise.all(historyPromises);
@@ -309,16 +320,16 @@ class MemoryStoreV3 extends MemoryStore {
       });
     }
 
-    // 6. 排序和截断
+    // 7. 排序和截断
     results.sort((a, b) => (b.effective_confidence || 0) - (a.effective_confidence || 0));
     results = results.slice(0, limit);
 
-    // 7. 更新使用统计 (v2)
+    // 8. 更新使用统计 (v2)
     for (const result of results) {
       await this._updateUsageStats(result.id);
     }
 
-    // 8. 缓存结果 (v3)
+    // 9. 缓存结果 (v3)
     if (useCache) {
       this._updateCache(cacheKey, { data: { results, count: results.length }, time: Date.now() });
     }
@@ -327,8 +338,62 @@ class MemoryStoreV3 extends MemoryStore {
       results,
       count: results.length,
       latency: Date.now() - startTime,
-      query
+      query,
+      hyde_used: useHyDE
     };
+  }
+
+  /**
+   * HyDE: 生成假设记忆 (v4.0 新增)
+   * 根据用户查询生成可能存在的相关记忆，提升检索召回
+   */
+  async _generateHypotheticalMemory(query) {
+    // 简单规则：根据查询类型生成假设记忆
+    const patterns = [
+      { pattern: /喜欢|偏好|口味|爱好/, template: `用户喜欢${query.replace(/喜欢|偏好|口味|爱好/g, '')}` },
+      { pattern: /项目|配置|设置/, template: `项目配置: ${query}` },
+      { pattern: /问题|错误|失败/, template: `问题记录: ${query}` },
+      { pattern: /怎么|如何|方法/, template: `解决方案: ${query}` }
+    ];
+
+    for (const { pattern, template } of patterns) {
+      if (pattern.test(query)) {
+        return template;
+      }
+    }
+
+    // 默认：直接返回原查询
+    return null;
+  }
+
+  /**
+   * v4.0 最终评分: 相似度×0.7 + 时间新鲜度×0.2 + 使用频率×0.1
+   */
+  _calculateFinalScore(memory) {
+    const baseConfidence = memory.metadata.confidence || memory.metadata.quality_score || 0.5;
+    
+    // 1. 相似度 (已包含在 baseConfidence 中)
+    const similarityScore = baseConfidence;
+    
+    // 2. 时间新鲜度 (越新越好)
+    const created = new Date(memory.metadata.created_at || memory.metadata.date);
+    const daysOld = (Date.now() - created) / (1000 * 60 * 60 * 24);
+    const freshnessScore = Math.max(0, 1 - daysOld / 365); // 一年衰减到 0
+    
+    // 3. 使用频率 (越常用越好)
+    const queryCount = memory.metadata.query_count || 0;
+    const usageScore = Math.min(1, Math.log(queryCount + 1) / 5); // log(126) ≈ 1
+    
+    // 加权计算
+    const finalScore = similarityScore * 0.7 + freshnessScore * 0.2 + usageScore * 0.1;
+    
+    // 优先级加成
+    const priorityBoost = { P0: 1.2, P1: 1.0, P2: 0.8, P3: 0.6 }[memory.metadata.priority] || 1.0;
+    
+    // 用户确认加成
+    const confirmedBoost = memory.metadata.user_confirmed ? 1.1 : 1.0;
+    
+    return Math.min(1, finalScore * priorityBoost * confirmedBoost);
   }
 
   // ========== v3 新增/增强方法 ==========

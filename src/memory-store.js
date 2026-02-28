@@ -118,9 +118,10 @@ class MemoryStore {
   /**
    * 生成文本嵌入
    * @param {string} text - 输入文本
-   * @returns {number[]} - 向量 (维度由配置决定，默认768)
+   * @param {string} mode - 模式: 'passage' (存储) 或 'query' (检索)
+   * @returns {number[]} - 向量 (维度由配置决定)
    */
-  async _embed(text) {
+  async _embed(text, mode = 'passage') {
     // 优先使用 this.embedder (被子类设置)，否则使用 this.extractor
     let embedder = this.embedder || this.extractor;
     
@@ -133,7 +134,14 @@ class MemoryStore {
       throw new Error('MemoryStore not initialized. Call initialize() first.');
     }
 
-    const output = await embedder(text, {
+    // BGE 模型需要前缀
+    let processedText = text;
+    if (this.modelConfig.prefix) {
+      const prefix = mode === 'query' ? this.modelConfig.prefix.query : this.modelConfig.prefix.passage;
+      processedText = prefix + text;
+    }
+
+    const output = await embedder(processedText, {
       pooling: 'mean',
       normalize: true
     });
@@ -561,8 +569,8 @@ class MemoryStore {
   async search(query, nResults = 5) {
     await this.initialize();
 
-    // 生成查询向量
-    const queryVector = await this._embed(query);
+    // 生成查询向量 (使用 query 模式)
+    const queryVector = await this._embed(query, 'query');
 
     // 执行搜索
     const results = await this.table

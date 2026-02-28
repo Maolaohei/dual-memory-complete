@@ -1,5 +1,5 @@
 {
-  "version": "3.1.0",
+  "version": "4.0.0",
   "paths": {
     "dbPath": "./data/vectordb",
     "tableName": "memories",
@@ -8,7 +8,7 @@
     "archiveDir": "./data/archive"
   },
   "embedding": {
-    "current": "mpnet",
+    "current": "bge-small-zh",
     "models": {
       "minilm": {
         "name": "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
@@ -18,12 +18,16 @@
       "mpnet": {
         "name": "Xenova/all-mpnet-base-v2",
         "dimensions": 768,
-        "description": "平衡性能与质量（当前推荐）"
+        "description": "平衡性能与质量（旧版）"
       },
-      "qwen3": {
-        "name": "Xenova/Qwen3-Embedding-0.6B",
-        "dimensions": 768,
-        "description": "中文特化模型（预留，待Xenova支持）"
+      "bge-small-zh": {
+        "name": "Xenova/bge-small-zh-v1.5",
+        "dimensions": 512,
+        "description": "中文原生模型（23MB，推荐）",
+        "prefix": {
+          "passage": "passage: ",
+          "query": "query: "
+        }
       }
     }
   },
@@ -37,9 +41,9 @@
     "type": "general"
   },
   "migration": {
-    "lastMigration": "2026-02-24",
-    "fromDimensions": 384,
-    "toDimensions": 768,
-    "oldDataPath": "./data/vectordb-backup-minilm-384dim-20260224"
+    "lastMigration": "2026-02-28",
+    "fromDimensions": 768,
+    "toDimensions": 512,
+    "oldDataPath": "./data/vectordb-backup-mpnet-768dim-20260228"
   }
 }
