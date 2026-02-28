@@ -65,12 +65,22 @@ async function cmdSearch(args) {
   const result = await s.smartRetrieve(query, { limit, decayAware: true });
   
   print('b', `\n🔍 搜索 "${query}" 找到 ${result.count} 条 (${result.latency}ms)`);
+  
+  if (result.results.length === 0) {
+    print('y', '   未找到相关记忆');
+    return;
+  }
+  
   result.results.forEach((r, i) => {
     const content = r.content.length > 60 ? r.content.slice(0, 60) + '...' : r.content;
     const effConf = r.effective_confidence?.toFixed(2) || 'N/A';
-    const marker = r.metadata.forgotten ? '🌫️' : '✓';
-    print(r.metadata.forgotten ? 'm' : 'g', `${i + 1}. ${marker} ${content}`);
-    console.log(`   有效置信度: ${effConf} | 类型: ${r.metadata.type || 'N/A'}`);
+    const priority = r.metadata.priority || 'P2';
+    const type = r.metadata.type || 'general';
+    
+    // 根据优先级选择颜色
+    const color = priority === 'P0' ? 'g' : priority === 'P1' ? 'y' : 'c';
+    print(color, `${i + 1}. ${content}`);
+    console.log(`   置信度: ${effConf} | 优先级: ${priority} | 类型: ${type}`);
   });
 }
 

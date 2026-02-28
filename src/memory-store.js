@@ -567,22 +567,28 @@ class MemoryStore {
     // 执行搜索
     const results = await this.table
       .search(queryVector)
-      .limit(nResults)
+      .limit(nResults * 2) // 多取一些用于过滤
       .execute();
 
-    // 格式化结果
-    return results.map(r => ({
-      id: r.id,
-      content: r.content,
-      metadata: {
-        type: r.type,
-        topic: r.topic,
-        character: r.character,
-        priority: r.priority,
-        date: r.date,
-        created_at: r.created_at
-      }
-    }));
+    // 格式化结果，过滤掉系统标记和已遗忘的记忆
+    return results
+      .filter(r => r.type !== 'system' && r.content !== 'system_marker' && !r.forgotten)
+      .slice(0, nResults)
+      .map(r => ({
+        id: r.id,
+        content: r.content,
+        metadata: {
+          type: r.type,
+          topic: r.topic,
+          character: r.character,
+          priority: r.priority,
+          date: r.date,
+          created_at: r.created_at,
+          confidence: r.confidence,
+          quality_score: r.quality_score,
+          forgotten: r.forgotten
+        }
+      }));
   }
 
   /**
