@@ -11,6 +11,7 @@ const { SmartExtractor } = require('./smart-extractor');
 const { TimelineTracker } = require('./timeline');
 const { ArchiveStore } = require('./archive-store');
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
 
 class MemoryStoreV3 extends MemoryStore {
@@ -26,6 +27,15 @@ class MemoryStoreV3 extends MemoryStore {
     this.cache = new Map();
     this.cacheMaxSize = options.cacheMaxSize || 1000;
     this.cacheTTL = options.cacheTTL || 5000; // 5秒
+    
+    // v4.0: 核心文件变化检测
+    this.coreFilesIndexState = new Map(); // 文件路径 -> { mtime, hash }
+    this.coreFilesConfig = [
+      { path: path.resolve(__dirname, '../../SOUL.md'), type: 'core_soul', priority: 'P0' },
+      { path: path.resolve(__dirname, '../../USER.md'), type: 'core_user', priority: 'P0' },
+      { path: path.resolve(__dirname, '../../AGENTS.md'), type: 'core_agents', priority: 'P0' }
+    ];
+    this._coreFilesCheckPromise = null; // 防止并发检查
     
     // 配置参数
     this.config = {
@@ -276,6 +286,9 @@ class MemoryStoreV3 extends MemoryStore {
       useCache = true,
       useHyDE = true  // v4.0 新增
     } = options;
+
+    // v4.0: 检查核心文件变化 (方案 D: 每次检索前检查)
+    await this._checkCoreFilesChanged();
 
     // 1. 缓存检查 (v3 优化)
     const cacheKey = `${query}_${JSON.stringify(filters)}`;
@@ -644,6 +657,183 @@ class MemoryStoreV3 extends MemoryStore {
     const demoted = await this.archive.autoDemote();
     console.log(`✅ 自动降级完成: ${demoted} 条记忆已处理`);
     return demoted;
+  }
+
+  // ========== v4.0 核心文件变化检测 (方案 D) ==========
+
+  /**
+   * 检查核心文件是否变化，如有变化则自动重新索引
+   * 每次检索前调用，确保向量库与文件同步
+   */
+  async _checkCoreFilesChanged() {
+    // 防止并发检查
+    if (this._coreFilesCheckPromise) {
+      return this._coreFilesCheckPromise;
+    }
+
+    this._coreFilesCheckPromise = this._doCheckCoreFiles();
+    try {
+      return await this._coreFilesCheckPromise;
+    } finally {
+      this._coreFilesCheckPromise = null;
+    }
+  }
+
+  async _doCheckCoreFiles() {
+    const changedFiles = [];
+
+    for (const fileConfig of this.coreFilesConfig) {
+      const filePath = fileConfig.path;
+      
+      try {
+        // 检查文件是否存在
+        if (!fsSync.existsSync(filePath)) continue;
+        
+        const stat = fsSync.statSync(filePath);
+        const currentMtime = stat.mtimeMs;
+        
+        // 获取上次索引状态
+        const lastState = this.coreFilesIndexState.get(filePath);
+        
+        if (!lastState || lastState.mtime !== currentMtime) {
+          // 文件有变化，需要重新索引
+          console.log(`🔄 检测到核心文件变化: ${path.basename(filePath)}`);
+          
+          // 计算文件 hash (用于更精确的变化检测)
+          const content = await fs.readFile(filePath, 'utf8');
+          const hash = this._simpleHash(content);
+          
+          if (lastState && lastState.hash === hash) {
+            // 内容没变，只是 mtime 变了 (比如 touch)
+            this.coreFilesIndexState.set(filePath, { mtime: currentMtime, hash });
+            continue;
+          }
+          
+          // 真正有变化，重新索引
+          await this._reindexCoreFile(fileConfig, content);
+          
+          // 更新状态
+          this.coreFilesIndexState.set(filePath, { mtime: currentMtime, hash });
+          changedFiles.push(path.basename(filePath));
+        }
+      } catch (err) {
+        console.error(`⚠️ 检查核心文件失败: ${filePath}`, err.message);
+      }
+    }
+
+    if (changedFiles.length > 0) {
+      console.log(`✅ 核心文件已重新索引: ${changedFiles.join(', ')}`);
+    }
+
+    return changedFiles;
+  }
+
+  /**
+   * 重新索引单个核心文件
+   */
+  async _reindexCoreFile(fileConfig, content) {
+    const { path: filePath, type, priority } = fileConfig;
+    
+    // 1. 删除该文件的旧切片
+    try {
+      const existing = await this.table
+        .query()
+        .where(`type = '${type}'`)
+        .toArray();
+      
+      if (existing.length > 0) {
+        const idsToDelete = existing.map(r => r.id);
+        await this.table.delete(`id IN ('${idsToDelete.join("','")}')`);
+        console.log(`  🗑️ 删除旧切片: ${existing.length} 条`);
+      }
+    } catch (err) {
+      // 表可能为空，忽略错误
+    }
+
+    // 2. 切片并索引新内容
+    const chunks = this._chunkContent(content, { type, priority });
+    
+    if (chunks.length > 0) {
+      await this.table.add(chunks);
+      console.log(`  ✅ 索引新切片: ${chunks.length} 条`);
+    }
+  }
+
+  /**
+   * 内容切片 (按段落/标题分割)
+   */
+  _chunkContent(content, { type, priority }) {
+    const chunks = [];
+    const lines = content.split('\n');
+    
+    let currentChunk = [];
+    let currentTitle = '';
+    let chunkIndex = 0;
+    
+    for (const line of lines) {
+      // 检测标题 (## 或 ###)
+      const titleMatch = line.match(/^(#{2,3})\s+(.+)$/);
+      
+      if (titleMatch) {
+        // 保存当前块
+        if (currentChunk.length > 0) {
+          const chunkContent = currentChunk.join('\n').trim();
+          if (chunkContent.length > 50) { // 忽略太短的块
+            chunks.push({
+              id: `${type}_${chunkIndex}`,
+              content: chunkContent,
+              type,
+              priority,
+              topic: currentTitle,
+              created_at: new Date().toISOString(),
+              date: new Date().toISOString().slice(0, 10),
+              confidence: 8,
+              query_count: 0
+            });
+            chunkIndex++;
+          }
+        }
+        
+        // 开始新块
+        currentTitle = titleMatch[2].trim();
+        currentChunk = [line];
+      } else {
+        currentChunk.push(line);
+      }
+    }
+    
+    // 保存最后一个块
+    if (currentChunk.length > 0) {
+      const chunkContent = currentChunk.join('\n').trim();
+      if (chunkContent.length > 50) {
+        chunks.push({
+          id: `${type}_${chunkIndex}`,
+          content: chunkContent,
+          type,
+          priority,
+          topic: currentTitle,
+          created_at: new Date().toISOString(),
+          date: new Date().toISOString().slice(0, 10),
+          confidence: 8,
+          query_count: 0
+        });
+      }
+    }
+    
+    return chunks;
+  }
+
+  /**
+   * 简单哈希 (用于内容变化检测)
+   */
+  _simpleHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return hash.toString(16);
   }
 }
 
