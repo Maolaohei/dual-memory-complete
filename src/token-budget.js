@@ -1,16 +1,31 @@
 /**
- * Token 预算管理模块
+ * Token 预算管理模块 v5.0
  * 防止上下文窗口溢出，确保核心信息优先
+ * 
+ * 新增功能：
+ * - 从 optimizations.json 读取配置
+ * - 支持经验提示预算
+ * - 更严格的预算限制（2600 token 硬限制）
  */
 
-const TOKEN_BUDGET = {
-  core_files: 800,       // 核心文件（精简后）
-  retrieved_memory: 600, // 检索到的记忆
+const fs = require('fs').promises;
+const fsSync = require('fs');
+const path = require('path');
+
+// 默认预算配置（v5.0 更严格）
+const DEFAULT_BUDGET = {
+  core_files: 300,       // SOUL_CORE.md（最小核心）
+  retrieved_memory: 500, // 检索到的记忆
+  experience_hint: 80,   // 经验提示（分级注入）
   conversation: 1500,    // 对话历史
-  system_prompt: 300,    // 系统提示
-  reserve: 200           // 预留
-  // 总计: ~3400 token
+  system_prompt: 200,    // 系统提示
+  reserve: 100           // 预留
+  // 总计: ~2680 token（更严格）
 };
+
+// 运行时预算
+let TOKEN_BUDGET = { ...DEFAULT_BUDGET };
+let configLoaded = false;
 
 /**
  * 估算文本的 token 数量
@@ -28,13 +43,81 @@ function estimateTokens(text) {
 }
 
 /**
+ * 从 optimizations.json 加载预算配置
+ */
+async function loadBudgetConfig() {
+  if (configLoaded) return TOKEN_BUDGET;
+  
+  const configPath = path.resolve(__dirname, '../../memory/optimizations.json');
+  
+  try {
+    if (fsSync.existsSync(configPath)) {
+      const data = await fs.readFile(configPath, 'utf-8');
+      const config = JSON.parse(data);
+      
+      if (config.token_budget?.limits) {
+        TOKEN_BUDGET = { ...DEFAULT_BUDGET, ...config.token_budget.limits };
+        console.log('✅ Token 预算配置已加载:', TOKEN_BUDGET);
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ 加载预算配置失败，使用默认值:', err.message);
+  }
+  
+  configLoaded = true;
+  return TOKEN_BUDGET;
+}
+
+/**
+ * 同步加载预算配置（用于初始化）
+ */
+function loadBudgetConfigSync() {
+  if (configLoaded) return TOKEN_BUDGET;
+  
+  const configPath = path.resolve(__dirname, '../../memory/optimizations.json');
+  
+  try {
+    if (fsSync.existsSync(configPath)) {
+      const data = fsSync.readFileSync(configPath, 'utf-8');
+      const config = JSON.parse(data);
+      
+      if (config.token_budget?.limits) {
+        TOKEN_BUDGET = { ...DEFAULT_BUDGET, ...config.token_budget.limits };
+      }
+    }
+  } catch (err) {
+    // 使用默认值
+  }
+  
+  configLoaded = true;
+  return TOKEN_BUDGET;
+}
+
+/**
+ * 获取当前预算配置
+ */
+function getBudget() {
+  if (!configLoaded) {
+    loadBudgetConfigSync();
+  }
+  return { ...TOKEN_BUDGET };
+}
+
+/**
  * 构建上下文，确保不超过预算
+ * v5.0 更新：支持经验提示
  */
 function buildContext(options = {}) {
+  // 确保配置已加载
+  if (!configLoaded) {
+    loadBudgetConfigSync();
+  }
+  
   const {
-    coreInfo = '',
-    memories = [],
-    history = '',
+    soul = '',           // SOUL_CORE.md
+    memories = [],       // 检索到的记忆
+    experience = null,   // 经验提示
+    history = '',        // 对话历史
     systemPrompt = ''
   } = options;
 
@@ -51,22 +134,30 @@ function buildContext(options = {}) {
     }
   }
 
-  // 2. 核心信息（高优先级）
-  if (coreInfo) {
-    const tokens = estimateTokens(coreInfo);
-    if (totalTokens + tokens <= budget.core_files + budget.reserve) {
-      parts.push({ type: 'core', content: coreInfo, tokens });
+  // 2. SOUL_CORE（核心人格，最高优先级）
+  if (soul) {
+    const tokens = estimateTokens(soul);
+    if (tokens <= budget.core_files) {
+      parts.push({ type: 'soul', content: soul, tokens });
       totalTokens += tokens;
     } else {
-      // 截断核心信息
-      const maxTokens = budget.core_files - (totalTokens - budget.reserve);
-      const truncated = truncateText(coreInfo, maxTokens);
-      parts.push({ type: 'core', content: truncated, tokens: estimateTokens(truncated) });
+      // 截断（不应该发生，SOUL_CORE 应该 ≤300 token）
+      const truncated = truncateText(soul, budget.core_files);
+      parts.push({ type: 'soul', content: truncated, tokens: estimateTokens(truncated) });
       totalTokens += estimateTokens(truncated);
     }
   }
 
-  // 3. 检索到的记忆（按评分排序，超预算截止）
+  // 3. 经验提示（分级注入，50~80 token）
+  if (experience && experience.hint) {
+    const tokens = estimateTokens(experience.hint);
+    if (tokens <= budget.experience_hint) {
+      parts.push({ type: 'experience', content: experience.hint, tokens, confidence: experience.confidence });
+      totalTokens += tokens;
+    }
+  }
+
+  // 4. 检索到的记忆（按评分排序，超预算截止）
   const sortedMemories = [...memories].sort((a, b) => 
     (b.effective_confidence || 0) - (a.effective_confidence || 0)
   );
@@ -75,7 +166,7 @@ function buildContext(options = {}) {
   let memoryTokens = 0;
 
   for (const mem of sortedMemories) {
-    const tokens = estimateTokens(mem.content);
+    const tokens = estimateTokens(mem.content || mem.metadata?.content || '');
     if (memoryTokens + tokens <= budget.retrieved_memory) {
       memoryParts.push(mem);
       memoryTokens += tokens;
@@ -89,11 +180,11 @@ function buildContext(options = {}) {
     totalTokens += memoryTokens;
   }
 
-  // 4. 对话历史（最低优先级）
+  // 5. 对话历史（最低优先级）
   if (history) {
     const tokens = estimateTokens(history);
     const remainingBudget = budget.conversation + budget.reserve - 
-      Math.max(0, totalTokens - budget.core_files - budget.system_prompt);
+      Math.max(0, totalTokens - budget.core_files - budget.system_prompt - budget.experience_hint);
     
     if (tokens <= remainingBudget) {
       parts.push({ type: 'history', content: history, tokens });
@@ -111,6 +202,29 @@ function buildContext(options = {}) {
     totalTokens,
     budget: TOKEN_BUDGET,
     utilization: (totalTokens / Object.values(TOKEN_BUDGET).reduce((a, b) => a + b, 0) * 100).toFixed(1) + '%'
+  };
+}
+
+/**
+ * v5.0 新增：计算并裁剪上下文
+ * 返回裁剪后的结果，确保不超过预算
+ */
+function calculate(options = {}) {
+  const result = buildContext(options);
+  
+  // 返回裁剪后的各部分
+  return {
+    soul: result.parts.find(p => p.type === 'soul')?.content || '',
+    memories: result.parts.find(p => p.type === 'memory')?.content || [],
+    experience: result.parts.find(p => p.type === 'experience')?.content || null,
+    history: result.parts.find(p => p.type === 'history')?.content || '',
+    tokenUsage: {
+      total: result.totalTokens,
+      breakdown: result.parts.reduce((acc, p) => {
+        acc[p.type] = p.tokens;
+        return acc;
+      }, {})
+    }
   };
 }
 
@@ -179,8 +293,13 @@ function getBudgetReport(currentUsage = {}) {
 
 module.exports = {
   TOKEN_BUDGET,
+  DEFAULT_BUDGET,
   estimateTokens,
+  loadBudgetConfig,
+  loadBudgetConfigSync,
+  getBudget,
   buildContext,
+  calculate,
   truncateText,
   shouldCompress,
   getBudgetReport
