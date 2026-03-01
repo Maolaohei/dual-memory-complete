@@ -1,8 +1,12 @@
 {
-  "version": "4.0.0",
+  "version": "6.0.0",
   "paths": {
     "dbPath": "./data/vectordb",
-    "tableName": "memories",
+    "tables": {
+      "memories": "对话记忆向量",
+      "core_files": "核心文件切片向量",
+      "skills": "Skill语义索引向量"
+    },
     "memoryMdPath": "../../MEMORY.md",
     "memoryDir": "../../memory",
     "archiveDir": "./data/archive"

@@ -1,10 +1,10 @@
 /**
- * FileWatcher - 核心文件变更监听
+ * FileWatcher - 核心文件变更监听 v6.0
  * 
  * 功能：
  * 1. 使用 fs.watch 监听文件变更（不依赖 chokidar）
  * 2. MD5 哈希检测内容变化
- * 3. 增量同步向量库
+ * 3. 增量同步向量库（使用 core_files 表）
  * 4. file_index.json 索引管理
  */
 
@@ -15,7 +15,7 @@ const crypto = require('crypto');
 
 class FileWatcher {
   constructor(store, options = {}) {
-    this.store = store;
+    this.store = store; // MultiTableStore 实例
     this.isActive = false;
     this.watchers = [];
     
@@ -26,11 +26,11 @@ class FileWatcher {
       ...options
     };
     
-    // 核心文件列表
+    // 核心文件列表（v6.0 更新：使用 SOUL_CORE.md）
     this.coreFiles = [
-      { path: path.resolve(__dirname, '../../memory/SOUL.md'), type: 'core_soul', priority: 'P0' },
-      { path: path.resolve(__dirname, '../../memory/USER.md'), type: 'core_user', priority: 'P0' },
-      { path: path.resolve(__dirname, '../../memory/AGENTS.md'), type: 'core_agents', priority: 'P0' }
+      { path: path.resolve(__dirname, '../../SOUL_CORE.md'), type: 'core_soul', priority: 'P0' },
+      { path: path.resolve(__dirname, '../../USER.md'), type: 'core_user', priority: 'P0' },
+      { path: path.resolve(__dirname, '../../AGENTS.md'), type: 'core_agents', priority: 'P0' }
     ];
     
     // 文件索引
@@ -228,42 +228,38 @@ class FileWatcher {
   }
 
   /**
-   * 删除切片
+   * 删除切片（使用 core_files 表）
    */
   async _deleteChunks(chunks) {
-    if (!this.store || !this.store.table) return;
+    if (!this.store) return;
 
     try {
-      const ids = chunks.map(c => c.id);
-      // LanceDB 删除语法
-      await this.store.table.delete(`id IN ('${ids.join("','")}')`);
+      for (const chunk of chunks) {
+        await this.store.deleteFileChunks(chunk.source || chunk.file_name);
+      }
     } catch (err) {
       // 可能不存在，忽略错误
     }
   }
 
   /**
-   * 新增切片
+   * 新增切片（使用 core_files 表）
    */
   async _addChunks(chunks) {
-    if (!this.store || !this.store.table) return;
+    if (!this.store) return;
 
-    // 为每个切片生成向量
-    const chunksWithVectors = [];
     for (const chunk of chunks) {
       try {
-        const vector = await this.store._embed(chunk.content);
-        chunksWithVectors.push({
-          ...chunk,
-          vector
-        });
+        await this.store.addFileChunk(
+          path.basename(chunk.source),
+          chunk.topic,
+          chunk.content,
+          0, // chunk_index
+          chunk.hash
+        );
       } catch (err) {
         console.error(`    ⚠️ 向量化失败: ${chunk.id}`);
       }
-    }
-
-    if (chunksWithVectors.length > 0) {
-      await this.store.table.add(chunksWithVectors);
     }
   }
 
