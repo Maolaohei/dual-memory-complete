@@ -58,12 +58,33 @@ async function cmdSearch(args) {
   
   const query = args[0];
   let limit = 5;
-  const nIndex = args.indexOf('-n');
-  if (nIndex !== -1 && args[nIndex + 1]) limit = parseInt(args[nIndex + 1], 10);
+  let jsonOutput = false;
+  
+  // 解析参数
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === '-n' && args[i + 1]) limit = parseInt(args[++i], 10);
+    else if (args[i] === '--limit' && args[i + 1]) limit = parseInt(args[++i], 10);
+    else if (args[i] === '--json') jsonOutput = true;
+  }
   
   const s = await getStore();
   const result = await s.smartRetrieve(query, { limit, decayAware: true });
   
+  // JSON 输出模式（供 Python 调用）
+  if (jsonOutput) {
+    const memories = result.results.map(r => ({
+      id: r.id,
+      content: r.content,
+      confidence: r.effective_confidence || r.confidence || 0,
+      priority: r.metadata.priority || 'P2',
+      type: r.metadata.type || 'general',
+      topic: r.metadata.topic || null,
+    }));
+    console.log(JSON.stringify(memories));
+    return;
+  }
+  
+  // 人类可读输出
   print('b', `\n🔍 搜索 "${query}" 找到 ${result.count} 条 (${result.latency}ms)`);
   
   if (result.results.length === 0) {
